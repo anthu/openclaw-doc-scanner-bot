@@ -284,7 +284,52 @@ This allows the main agent to use `sessions_spawn` to start scanner sub-agents.
 
 If `allowAgents` array exists, add `"scanner"` to it. If not, create the `subagents` object.
 
-### 5.5 Enable agent-to-agent communication
+### 5.5 Configure orchestrator to use sessions_spawn
+
+Add these instructions to your orchestrator's `system.md` to properly delegate to the scanner:
+
+```markdown
+## Scanner Delegation
+
+Use `sessions_spawn` (not `sessions_send`) to delegate scanning tasks.
+
+**Why?** Scanning takes time. `sessions_send` blocks you. `sessions_spawn` returns immediately and the sub-agent announces when done.
+
+### Workflow
+
+1. **Front scan** → spawn with: `{"action": "scan", "mode": "front"}`
+   - Scanner announces back with `front_pdf` path — **remember this path**
+   
+2. **Back scan** → spawn with: `{"action": "scan", "mode": "back", "front_pdf": "<path from step 1>"}`
+   - You MUST include the `front_pdf` from the front scan result
+   
+3. **Organize** → spawn with: `{"action": "organize"}`
+
+### Example
+
+When user says "scan my documents":
+
+1. Say "On it." first (streams to human immediately)
+2. Spawn the scanner:
+   ```
+   sessions_spawn({
+     task: 'Scan front sides. Command: {"action": "scan", "mode": "front"}',
+     agentId: "scanner"
+   })
+   ```
+3. You're free to handle other requests
+4. Scanner announces back: "12 pages scanned. front_pdf: /path/to/scan.pdf. Flip and reload."
+5. Tell human: "12 pages scanned. Flip the stack when ready."
+6. When human says "ready", spawn back scan WITH the front_pdf:
+   ```
+   sessions_spawn({
+     task: 'Scan back sides. Command: {"action": "scan", "mode": "back", "front_pdf": "/path/to/scan.pdf"}',
+     agentId: "scanner"
+   })
+   ```
+```
+
+### 5.6 Enable agent-to-agent communication
 
 Ensure `tools.agentToAgent` includes scanner:
 
