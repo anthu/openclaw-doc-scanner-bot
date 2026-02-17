@@ -157,7 +157,7 @@ Wait for user confirmation before running install commands.
 ## Step 2: Clone Repository
 
 ```bash
-git clone https://github.com/anthu/openclaw-scanner-bot.git /tmp/openclaw-scanner-install
+git clone https://github.com/anthu/openclaw-doc-scanner-bot.git /tmp/openclaw-scanner-install
 ```
 
 ---

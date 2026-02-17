@@ -1,13 +1,13 @@
 {
-  default_scanner: null,
-  default_output: null,
-  local_fallback: ~/Documents/Scanned,
-  scan_settings: {
-    resolution: 300,
-    mode: mono,
-    size: a4
+  "default_scanner": null,
+  "default_output": null,
+  "local_fallback": "~/Documents/Scanned",
+  "scan_settings": {
+    "resolution": 300,
+    "mode": "mono",
+    "size": "a4"
   },
-  known_scanners: [],
-  setup_complete: false,
-  last_updated: null
+  "known_scanners": [],
+  "setup_complete": false,
+  "last_updated": null
 }
