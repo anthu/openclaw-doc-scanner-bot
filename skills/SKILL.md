@@ -1,11 +1,11 @@
 ---
 name: document-scanner
-description: Scan, analyze, split, and organize physical documents. Use when the user asks to scan documents, organize scanned mail, process physical letters, or digitize paperwork. Handles multi-page documents, automatic page reordering, date extraction, document splitting, and organized filing.
+description: Scan, analyze, split, and organize physical documents. Use when the user asks to scan documents, organize scanned mail, process physical letters, or digitize paperwork. Handles multi-page documents, automatic page reordering, and organized filing with AI-powered document identification.
 ---
 
 # Document Scanner
 
-Scan physical documents, intelligently split mixed documents, extract dates, and organize them with proper naming.
+Scan physical documents, intelligently split mixed documents, and organize them with AI-powered sender/date identification.
 
 ## Quick Start
 
@@ -15,20 +15,52 @@ python3 skills/document-scanner/scripts/scan_and_organize.py setup-check
 python3 skills/document-scanner/scripts/scan_and_organize.py list-scanners
 ```
 
-**Basic scan (front sides):**
-```bash
-python3 skills/document-scanner/scripts/scan_and_organize.py front
-```
-
-**Scan back sides (after flipping stack):**
-```bash
-python3 skills/document-scanner/scripts/scan_and_organize.py back --front-pdf /path/to/front.pdf
-```
-
 **Single-sided scan:**
 ```bash
 python3 skills/document-scanner/scripts/scan_and_organize.py single
 ```
+
+**Duplex scan (front then back):**
+```bash
+python3 skills/document-scanner/scripts/scan_and_organize.py front
+# Wait for response, flip stack, then:
+python3 skills/document-scanner/scripts/scan_and_organize.py back --front-pdf /path/from/response.pdf
+```
+
+## Complete Workflow
+
+### Step 1: Scan
+Run the scan command. The script returns `status: "needs_identification"` with documents in a pending folder.
+
+### Step 2: Identify (YOU do this)
+For each document in the response:
+1. Read the `text_preview` field
+2. Use the **document-analysis** skill guidelines to identify:
+   - **Sender** - Who sent it (e.g., "UBS", "Cornercard", "SVA_Zurich")
+   - **Date** - Document date in YYYY-MM-DD format
+   - **Type** - Document type (e.g., "Rechnung", "Kontoauszug", "Mitteilung")
+
+### Step 3: Organize
+For each identified document, call:
+```bash
+python3 skills/document-scanner/scripts/scan_and_organize.py organize \
+  --id "DOCUMENT_ID" \
+  --sender "SenderName" \
+  --date "2026-01-15" \
+  --type "Rechnung"
+```
+
+## Commands
+
+| Command | Description |
+|---------|-------------|
+| `front` | Scan front sides only (for duplex) |
+| `back --front-pdf PATH` | Scan back sides and merge with fronts |
+| `single` | Single-sided scan |
+| `list-scanners` | List available scanners |
+| `setup-check` | Check configuration |
+| `list-pending` | List documents awaiting identification |
+| `organize --id ID --sender NAME [--date DATE] [--type TYPE]` | Move pending doc to final location |
 
 ## Options
 
@@ -36,58 +68,58 @@ python3 skills/document-scanner/scripts/scan_and_organize.py single
 - `--output "/path"` - Save to specific directory (overrides default)
 - `--resolution 300` - Scan resolution in DPI
 
-## Workflow
+## Response Statuses
 
-### 1. Scan Documents
+| Status | Meaning | Next Action |
+|--------|---------|-------------|
+| `awaiting_flip` | Front sides scanned | Ask user to flip stack, then run `back` |
+| `needs_identification` | Documents ready for ID | Identify each document, then `organize` |
+| `organized` | Document filed | Done |
+| `empty` | No pages in feeder | Check scanner |
+| `error` | Something failed | Check message |
 
-The script uses `scanline` with these settings:
-- **Resolution:** 300 DPI (configurable)
-- **Size:** DIN A4 (European standard)
-- **Mode:** Monochrome (black & white for text documents)
-- **Format:** PDF
+## Example Session
 
-### 2. Remove Blank Pages
+```
+Agent: Scanning your documents...
+[runs: scan_and_organize.py single]
 
-Automatically detects and removes:
-- Completely blank pages
-- Pages with less than 50 characters
-- Pages with only whitespace
+Script returns:
+{
+  "status": "needs_identification",
+  "documents": [
+    {
+      "id": "20260215_143022_00",
+      "text_preview": "UBS Switzerland AG\nZürich, 10.02.2026\nKontoauszug...",
+      "pages": 2
+    },
+    {
+      "id": "20260215_143022_01", 
+      "text_preview": "Cornercard\nMastercard Abrechnung\nAbrechnungsdatum: 31.01.2026...",
+      "pages": 3
+    }
+  ]
+}
 
-### 3. Analyze & Split
+Agent analyzes text_preview using document-analysis skill:
+- Doc 00: Sender=UBS, Date=2026-02-10, Type=Kontoauszug
+- Doc 01: Sender=Cornercard, Date=2026-01-31, Type=Abrechnung
 
-The script analyzes each page for:
-- **Page indicators:** "1/3", "2/3", "Page 2 of 5", "Seite 2 von 5"
-- **Letterhead:** Identifies sender from header
-- **Format consistency:** Groups pages with same sender/format
+Agent organizes:
+[runs: organize --id 20260215_143022_00 --sender UBS --date 2026-02-10 --type Kontoauszug]
+[runs: organize --id 20260215_143022_01 --sender Cornercard --date 2026-01-31 --type Abrechnung]
 
-### 4. Reorder Pages
-
-If pages are out of order, the script automatically reorders based on page numbers.
-
-### 5. Extract Metadata
-
-For each document:
-- **Date:** DD.MM.YYYY, YYYY-MM-DD, or "Month YYYY" format
-- **Sender:** From letterhead/footer patterns
-- **Type:** Invoice, statement, letter, etc.
-
-### 6. Organize & Save
-
-Files are saved as: `YYYY/Category/YYYY-MM-DD_Description.pdf`
+Agent: Done! Saved 2 documents:
+- 2026/UBS/2026-02-10_UBS_Kontoauszug.pdf
+- 2026/Cornercard/2026-01-31_Cornercard_Abrechnung.pdf
+```
 
 ## Configuration
 
-Preferences are stored in `memory/preferences.json` after first-run setup.
-
-Document patterns for sender identification can be customized in the script:
-
-```python
-PATTERNS = {
-    "cornercard": ["cornercard", "comer banca"],
-    "sva_zurich": ["sva zürich", "familienzulagen"],
-    # Add your own patterns...
-}
-```
+Preferences stored in `memory/preferences.json`:
+- `default_scanner` - Scanner to use
+- `default_output` - Where to save files
+- `local_fallback` - Backup location if default unavailable
 
 ## Troubleshooting
 
@@ -101,5 +133,5 @@ scanline -list
 - Ensure documents are clean and flat
 
 **Output not accessible:**
-- Script will automatically fall back to local directory
+- Script automatically falls back to local directory
 - Check mount status of network drives

@@ -5,6 +5,8 @@ Document Scanner - Self-configuring with preference support
 Dependencies (install before use):
     pip3 install PyPDF2
     brew install ocrmypdf scanline
+
+Document identification is handled by the agent using AI, not hardcoded patterns.
 """
 import subprocess
 import sys
@@ -33,9 +35,7 @@ WORKSPACE_DIR = SCRIPT_DIR.parent.parent.parent  # skills/document-scanner/scrip
 MEMORY_DIR = WORKSPACE_DIR / "memory"
 PREFERENCES_FILE = MEMORY_DIR / "preferences.json"
 STAGING_DIR = WORKSPACE_DIR / "skills" / "scan-staging"
-
-# Document patterns removed - AI-based identification used instead
-PATTERNS = {}
+PENDING_DIR = STAGING_DIR / "pending"
 
 
 def check_tools() -> List[str]:
@@ -253,20 +253,13 @@ def analyze_page_format(page) -> Dict:
     page_num, total_pages = extract_page_indicator(text)
     
     header_lines = lines[:max(1, len(lines) // 5)]
-    header_text = '\n'.join(header_lines).lower()
+    header_text = '\n'.join(header_lines)
     
     footer_lines = lines[-max(1, len(lines) // 10):]
-    footer_text = '\n'.join(footer_lines).lower()
-    
-    sender = None
-    for doc_type, patterns in PATTERNS.items():
-        if any(pattern in header_text or pattern in footer_text for pattern in patterns):
-            sender = doc_type
-            break
+    footer_text = '\n'.join(footer_lines)
     
     return {
         'page_indicator': (page_num, total_pages),
-        'sender': sender,
         'header_text': header_text[:200],
         'footer_text': footer_text[:200],
         'full_text': text,
@@ -332,13 +325,12 @@ def analyze_and_split(pdf_path: Path) -> List[Dict]:
         page_analyses.append(analysis)
         non_blank_pages.append(i)
     
-    # Group into documents
+    # Group into documents based on page indicators and content breaks
     documents = []
     current_doc = None
     
     for i, analysis in enumerate(page_analyses):
         page_num, total_pages_ind = analysis['page_indicator']
-        sender = analysis['sender']
         text = analysis['full_text'][:500].lower()
         
         start_new = False
@@ -348,8 +340,6 @@ def analyze_and_split(pdf_path: Path) -> List[Dict]:
         elif i % 2 == 0:
             if page_num == 1:
                 start_new = True
-            elif sender and current_doc.get('sender') and sender != current_doc['sender']:
-                start_new = True
             elif 'sehr geehrte' in text or 'guten tag' in text:
                 start_new = True
         
@@ -358,7 +348,6 @@ def analyze_and_split(pdf_path: Path) -> List[Dict]:
                 documents.append(current_doc)
             current_doc = {
                 'pages': [analysis['index']],
-                'sender': sender,
                 'page_indicators': [(page_num, total_pages_ind)],
                 'analyses': [analysis]
             }
@@ -370,7 +359,7 @@ def analyze_and_split(pdf_path: Path) -> List[Dict]:
     if current_doc:
         documents.append(current_doc)
     
-    # Reorder and extract metadata
+    # Reorder based on page indicators and extract text
     for doc in documents:
         indicators = doc['page_indicators']
         if all(num is not None for num, _ in indicators):
@@ -384,120 +373,94 @@ def analyze_and_split(pdf_path: Path) -> List[Dict]:
         
         doc_text = '\n'.join(a['full_text'] for a in doc['analyses'])
         doc['dates'] = extract_dates(doc_text)
-        doc['type'] = doc['sender'] or 'unknown'
         doc['full_text'] = doc_text
     
     return documents
 
 
-def generate_filename(doc: Dict, idx: int) -> str:
-    """Generate descriptive filename from document content"""
-    text = doc['full_text'][:2000].lower()
-    sender = doc.get('sender') or doc.get('type', 'unknown')
-    
-    descriptions = []
-    
-    if 'mietzins' in text or 'rent' in text:
-        descriptions.append("Mietzinsrechnung")
-    elif 'rechnung' in text or 'invoice' in text:
-        descriptions.append("Rechnung")
-    
-    if 'familienzulagen' in text:
-        descriptions.append("Familienzulagen")
-    
-    if 'verwaltungswechsel' in text:
-        descriptions.append("Verwaltungswechsel")
-    
-    if 'fragebogen' in text:
-        descriptions.append("Fragebogen")
-    
-    if 'mitteilung' in text and not descriptions:
-        descriptions.append("Mitteilung")
-    
-    senders = []
-    if 'mzp' in text:
-        senders.append("MZP")
-    if 'sva' in text and 'zürich' in text:
-        senders.append("SVA_Zurich")
-    if 'ubs' in text:
-        senders.append("UBS")
-    if 'cornercard' in text:
-        senders.append("Cornercard")
-    
-    parts = []
-    if senders:
-        parts.extend(senders[:2])
-    if descriptions:
-        parts.extend(descriptions[:2])
-    
-    if not parts:
-        parts.append(sender.replace("_", " ").title().replace(" ", "_"))
-        parts.append(str(idx + 1))
-    
-    return "_".join(parts)
-
-
-def save_documents(pdf_path: Path, documents: List[Dict], output_base: Path) -> List[Dict]:
-    """Save split documents and return metadata"""
+def save_pending_documents(pdf_path: Path, documents: List[Dict]) -> List[Dict]:
+    """Save documents to pending folder for agent identification"""
     reader = PdfReader(pdf_path)
-    saved_docs = []
+    PENDING_DIR.mkdir(parents=True, exist_ok=True)
+    
+    pending_docs = []
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     
     for idx, doc in enumerate(documents):
         writer = PdfWriter()
         
-        blank_count = 0
         for page_num in doc['pages']:
             page = reader.pages[page_num]
             if not is_blank_page(page):
                 writer.add_page(page)
-            else:
-                blank_count += 1
         
         if len(writer.pages) == 0:
             continue
         
-        doc_date = datetime.now()
-        if doc['dates']:
-            first_page_text = doc['analyses'][0]['full_text'][:1000] if doc['analyses'] else ""
-            first_page_dates = extract_dates(first_page_text)
-            dates_to_try = first_page_dates if first_page_dates else doc['dates']
-            
-            parsed_dates = []
-            for date_str in dates_to_try:
-                parsed = parse_date(date_str)
-                if parsed:
-                    today = datetime.now()
-                    days_diff = (parsed - today).days
-                    if -730 <= days_diff <= 90:
-                        parsed_dates.append(parsed)
-            
-            if parsed_dates:
-                doc_date = max(parsed_dates)
+        # Save to pending with temporary name
+        pending_name = f"pending_{timestamp}_{idx:02d}.pdf"
+        pending_path = PENDING_DIR / pending_name
         
-        doc_type = doc['type']
-        folder_name = doc_type.replace("_", " ").title().replace(" ", "_")
-        
-        year_folder = output_base / str(doc_date.year)
-        type_folder = year_folder / folder_name
-        type_folder.mkdir(parents=True, exist_ok=True)
-        
-        date_str = doc_date.strftime("%Y-%m-%d")
-        doc_description = generate_filename(doc, idx)
-        filename = f"{date_str}_{doc_description}.pdf"
-        output_path = type_folder / filename
-        
-        with open(output_path, "wb") as f:
+        with open(pending_path, "wb") as f:
             writer.write(f)
         
-        saved_docs.append({
-            "sender": doc['sender'],
-            "type": doc['type'],
-            "date": date_str,
+        # Extract text preview for agent identification
+        text_preview = doc['full_text'][:2000] if doc.get('full_text') else ""
+        
+        pending_docs.append({
+            "id": f"{timestamp}_{idx:02d}",
+            "pending_path": str(pending_path),
             "pages": len(writer.pages),
-            "saved_to": str(output_path)
+            "dates_found": doc.get('dates', []),
+            "text_preview": text_preview
         })
     
-    return saved_docs
+    return pending_docs
+
+
+def organize_document(pending_id: str, sender: str, date: str, doc_type: str, output_base: Path) -> Dict:
+    """Move a pending document to its final location with proper naming"""
+    pending_path = PENDING_DIR / f"pending_{pending_id}.pdf"
+    
+    if not pending_path.exists():
+        return {"status": "error", "error": "not_found", "message": f"Pending document {pending_id} not found"}
+    
+    # Parse date
+    doc_date = None
+    if date:
+        doc_date = parse_date(date)
+    if not doc_date:
+        doc_date = datetime.now()
+    
+    # Build folder structure: YYYY/Sender/
+    folder_name = sender.replace(" ", "_")
+    year_folder = output_base / str(doc_date.year)
+    sender_folder = year_folder / folder_name
+    sender_folder.mkdir(parents=True, exist_ok=True)
+    
+    # Build filename: YYYY-MM-DD_Sender_Type.pdf
+    date_str = doc_date.strftime("%Y-%m-%d")
+    type_clean = doc_type.replace(" ", "_") if doc_type else "Document"
+    filename = f"{date_str}_{sender}_{type_clean}.pdf"
+    
+    # Handle duplicates
+    final_path = sender_folder / filename
+    counter = 1
+    while final_path.exists():
+        filename = f"{date_str}_{sender}_{type_clean}_{counter}.pdf"
+        final_path = sender_folder / filename
+        counter += 1
+    
+    # Move file
+    shutil.move(str(pending_path), str(final_path))
+    
+    return {
+        "status": "organized",
+        "sender": sender,
+        "date": date_str,
+        "type": doc_type,
+        "saved_to": str(final_path)
+    }
 
 
 def cleanup(staging_dir: Path):
@@ -514,12 +477,17 @@ def cleanup(staging_dir: Path):
 def main():
     parser = argparse.ArgumentParser(description='Document Scanner')
     parser.add_argument('mode', nargs='?', default='front', 
-                        choices=['front', 'back', 'single', 'list-scanners', 'setup-check'],
+                        choices=['front', 'back', 'single', 'list-scanners', 'setup-check', 'organize', 'list-pending'],
                         help='Scan mode or command')
     parser.add_argument('--front-pdf', help='Path to front PDF (for back mode)')
     parser.add_argument('--scanner', help='Scanner name override')
     parser.add_argument('--output', help='Output directory override')
     parser.add_argument('--resolution', type=int, help='Resolution override')
+    # For organize mode
+    parser.add_argument('--id', help='Pending document ID')
+    parser.add_argument('--sender', help='Document sender/source')
+    parser.add_argument('--date', help='Document date (YYYY-MM-DD)')
+    parser.add_argument('--type', dest='doc_type', help='Document type')
     
     args = parser.parse_args()
     
@@ -527,6 +495,41 @@ def main():
     if args.mode == 'list-scanners':
         scanners = detect_scanners()
         print(json.dumps({"status": "ok", "scanners": scanners}))
+        return
+    
+    if args.mode == 'list-pending':
+        pending_docs = []
+        if PENDING_DIR.exists():
+            for pdf in PENDING_DIR.glob("pending_*.pdf"):
+                try:
+                    reader = PdfReader(pdf)
+                    text = ""
+                    if len(reader.pages) > 0:
+                        text = reader.pages[0].extract_text() or ""
+                    pending_docs.append({
+                        "id": pdf.stem.replace("pending_", ""),
+                        "path": str(pdf),
+                        "pages": len(reader.pages),
+                        "text_preview": text[:1000]
+                    })
+                except Exception:
+                    pass
+        print(json.dumps({"status": "ok", "pending": pending_docs}))
+        return
+    
+    if args.mode == 'organize':
+        if not args.id or not args.sender:
+            print(json.dumps({
+                "status": "error",
+                "error": "missing_params",
+                "message": "organize requires --id and --sender"
+            }))
+            return
+        
+        prefs = load_preferences()
+        output_base = get_output_base(prefs, args.output)
+        result = organize_document(args.id, args.sender, args.date, args.doc_type, output_base)
+        print(json.dumps(result))
         return
     
     if args.mode == 'setup-check':
@@ -639,21 +642,18 @@ def main():
         # Analyze and split
         documents = analyze_and_split(pdf_path)
         
-        # Save
-        saved_docs = save_documents(pdf_path, documents, output_base)
-        
-        # Cleanup
-        cleanup(STAGING_DIR)
+        # Save to pending for agent identification
+        pending_docs = save_pending_documents(pdf_path, documents)
         
         result = {
-            "status": "complete",
-            "documents": saved_docs,
-            "total_pages": sum(d['pages'] for d in saved_docs),
-            "total_documents": len(saved_docs)
+            "status": "needs_identification",
+            "documents": pending_docs,
+            "total_documents": len(pending_docs),
+            "message": "Documents scanned and split. Please identify each document (sender, date, type) using the document-analysis skill, then call 'organize' for each."
         }
         
         if using_fallback:
-            result["warning"] = "Default output not accessible, saved to fallback location"
+            result["warning"] = "Default output not accessible, will use fallback location"
         
         print(json.dumps(result))
         
