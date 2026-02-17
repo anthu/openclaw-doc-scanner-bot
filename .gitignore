@@ -1,0 +1,25 @@
+# User-specific preferences (generated at runtime)
+memory/*.json
+!memory/preferences.json.template
+
+# Python cache
+*.pyc
+__pycache__/
+
+# macOS
+.DS_Store
+
+# Scan staging (temporary files)
+skills/scan-staging/
+
+# Test outputs
+test-scan/
+
+# User-specific files (never commit)
+USER.md
+memory/preferences.json
+.openclaw/
+
+# Keep templates
+!USER.md.template
+!memory/preferences.json.template
