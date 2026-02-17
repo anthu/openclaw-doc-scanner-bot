@@ -34,15 +34,8 @@ MEMORY_DIR = WORKSPACE_DIR / "memory"
 PREFERENCES_FILE = MEMORY_DIR / "preferences.json"
 STAGING_DIR = WORKSPACE_DIR / "skills" / "scan-staging"
 
-# Document patterns for categorization
-PATTERNS = {
-    "cornercard": ["cornercard", "comer banca", "comercard", "cornèr"],
-    "sva_zurich": ["sva zürich", "familienzulagen", "familienausgleichskasse"],
-    "ubs": ["ubs", "union bank"],
-    "credit_suisse": ["credit suisse"],
-    "insurance": ["axa", "zurich insurance", "helvetia"],
-    "utility": ["ewz", "swisscom", "sunrise"],
-}
+# Document patterns removed - AI-based identification used instead
+PATTERNS = {}
 
 
 def check_tools() -> List[str]:
