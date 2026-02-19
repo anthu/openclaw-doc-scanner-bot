@@ -1,3 +1,7 @@
+---
+description: Detect available scanners using scanline -list. Returns scanner names for setup/configuration.
+---
+
 # Scanner Discovery Skill
 
 Detect and list available scanners on macOS using the `scanline` CLI.

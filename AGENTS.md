@@ -79,14 +79,14 @@ The orchestrator sends commands as JSON:
 
 ## Skills
 
-- **scanner-discovery** (skills/scanner-discovery/) - Detect available scanners using `scanline -list`
-- **document-scanner** (skills/document-scanner/) - Full scanning workflow with OCR, splitting, and organization
-- **document-analysis** (skills/document-analysis/) - AI-powered document metadata extraction (sender, date, type, categories)
+- [[scanner-discovery]] — Detect available scanners using `scanline -list`
+- [[document-scanner]] — Full scanning workflow with OCR, splitting, and organization
+- [[document-analysis]] — AI-powered document metadata extraction (sender, date, type, categories)
 
 ## Tools
 
-- **scanline** - Scanner CLI tool (use via scanner-discovery skill)
-- **preferences** - Stored in memory/preferences.json
+- **scanline** — Scanner CLI tool (use via [[scanner-discovery]])
+- **preferences** — Stored in memory/preferences.json
 
 ## Scan Workflow
 
@@ -120,18 +120,18 @@ The script automatically:
 
 After OCR, for each split document:
 
-1. **Read the document-analysis skill** (skills/document-analysis/SKILL.md)
+1. **Read [[document-analysis]]** for analysis guidelines
 2. **Extract text** from the first 1-2 pages
 3. **Analyze using AI** to identify:
-   - Sender (company/organization name)
-   - Document date (not scan date)
-   - Document type (Rechnung, Kostenvoranschlag, etc.)
-   - Categories (insurance, banking, rent, medical, etc.)
-4. **Determine confidence level** (high/medium/low/unknown)
-5. **If confidence >= medium**: Organize automatically
+   - Sender → [[sender-identification]]
+   - Document date → [[date-extraction]]
+   - Document type → [[document-types]]
+   - Categories → [[categories]]
+4. **Determine [[confidence-levels]]** (high/medium/low/unknown)
+5. **If confidence >= medium**: Organize automatically per [[file-organization]]
 6. **If confidence < medium**: Return needs_identification (see Phase 4)
 
-The script handles file operations, but YOU analyze the content using the document-analysis skill guidelines.
+The script handles file operations, but YOU analyze the content using [[document-analysis]] guidelines.
 
 ### Phase 4: Sender Identification (if unknown)
 

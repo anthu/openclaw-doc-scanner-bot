@@ -1,11 +1,56 @@
 ---
 name: document-scanner
-description: Scan, analyze, split, and organize physical documents. Use when the user asks to scan documents, organize scanned mail, process physical letters, or digitize paperwork. Handles multi-page documents, automatic page reordering, and organized filing with AI-powered document identification.
+description: Scan, analyze, split, and organize physical documents. Entry point skill graph for the scanner agent.
 ---
 
 # Document Scanner
 
 Scan physical documents, intelligently split mixed documents, and organize them with AI-powered sender/date identification.
+
+This is a **skill graph** — follow wikilinks to traverse relevant knowledge based on your current task.
+
+## Graph Structure
+
+```
+                    ┌─────────────────┐
+                    │  SKILL.md (you) │
+                    └────────┬────────┘
+         ┌──────────────────┼──────────────────┐
+         ▼                  ▼                  ▼
+┌─────────────────┐ ┌───────────────┐ ┌─────────────────┐
+│ scanner-discovery│ │document-scanner│ │ document-analysis│
+└─────────────────┘ └───────────────┘ └────────┬────────┘
+                                               │
+                    ┌──────────────────────────┼──────────────────────────┐
+                    ▼              ▼           ▼           ▼              ▼
+             ┌──────────┐  ┌────────────┐ ┌─────────┐ ┌──────────┐ ┌───────────┐
+             │ sender-  │  │ date-      │ │document-│ │categories│ │confidence-│
+             │ identif. │  │ extraction │ │ types   │ │          │ │ levels    │
+             └──────────┘  └────────────┘ └─────────┘ └──────────┘ └───────────┘
+
+                              ┌─────────────────┐
+                              │   references/   │
+                              └────────┬────────┘
+         ┌──────────────────┬─────────┼─────────┬──────────────────┐
+         ▼                  ▼         ▼         ▼                  ▼
+┌──────────────┐ ┌───────────────┐ ┌──────┐ ┌────────────┐ ┌──────────────┐
+│ architecture │ │page-grouping  │ │ file-│ │troubleshoot│ │ api-reference│
+│              │ │               │ │ org. │ │            │ │              │
+└──────────────┘ └───────────────┘ └──────┘ └────────────┘ └──────────────┘
+```
+
+## Entry Points by Task
+
+| I need to... | Start here |
+|--------------|------------|
+| Scan documents | [[document-scanner]] (this file's Quick Start below) |
+| Find available scanners | [[scanner-discovery]] |
+| Identify a document | [[document-analysis]] |
+| Understand date formats | [[date-extraction]] |
+| Know document types | [[document-types]] |
+| File naming rules | [[file-organization]] |
+| Debug an issue | [[troubleshooting]] |
+| Understand the pipeline | [[architecture]] |
 
 ## Quick Start
 
@@ -35,10 +80,10 @@ Run the scan command. The script returns `status: "needs_identification"` with d
 ### Step 2: Identify (YOU do this)
 For each document in the response:
 1. Read the `text_preview` field
-2. Use the **document-analysis** skill guidelines to identify:
-   - **Sender** - Who sent it (e.g., "UBS", "Cornercard", "SVA_Zurich")
-   - **Date** - Document date in YYYY-MM-DD format
-   - **Type** - Document type (e.g., "Rechnung", "Kontoauszug", "Mitteilung")
+2. Use [[document-analysis]] to identify:
+   - **Sender** → [[sender-identification]]
+   - **Date** → [[date-extraction]]
+   - **Type** → [[document-types]]
 
 ### Step 3: Organize
 For each identified document, call:
@@ -57,71 +102,31 @@ python3 skills/document-scanner/scripts/scan_and_organize.py organize \
 | `front` | Scan front sides only (for duplex) |
 | `back --front-pdf PATH` | Scan back sides and merge with fronts |
 | `single` | Single-sided scan |
-| `list-scanners` | List available scanners |
+| `list-scanners` | List available scanners — see [[scanner-discovery]] |
 | `setup-check` | Check configuration |
 | `list-pending` | List documents awaiting identification |
 | `organize --id ID --sender NAME [--date DATE] [--type TYPE]` | Move pending doc to final location |
-
-## Options
-
-- `--scanner "Name"` - Use specific scanner (overrides default)
-- `--output "/path"` - Save to specific directory (overrides default)
-- `--resolution 300` - Scan resolution in DPI
 
 ## Response Statuses
 
 | Status | Meaning | Next Action |
 |--------|---------|-------------|
 | `awaiting_flip` | Front sides scanned | Ask user to flip stack, then run `back` |
-| `needs_identification` | Documents ready for ID | Identify each document, then `organize` |
+| `needs_identification` | Documents ready for ID | Use [[document-analysis]], then `organize` |
 | `organized` | Document filed | Done |
 | `empty` | No pages in feeder | Check scanner |
-| `error` | Something failed | Check message |
-
-## Example Session
-
-```
-Agent: Scanning your documents...
-[runs: scan_and_organize.py single]
-
-Script returns:
-{
-  "status": "needs_identification",
-  "documents": [
-    {
-      "id": "20260215_143022_00",
-      "text_preview": "UBS Switzerland AG\nZürich, 10.02.2026\nKontoauszug...",
-      "pages": 2
-    },
-    {
-      "id": "20260215_143022_01", 
-      "text_preview": "Cornercard\nMastercard Abrechnung\nAbrechnungsdatum: 31.01.2026...",
-      "pages": 3
-    }
-  ]
-}
-
-Agent analyzes text_preview using document-analysis skill:
-- Doc 00: Sender=UBS, Date=2026-02-10, Type=Kontoauszug
-- Doc 01: Sender=Cornercard, Date=2026-01-31, Type=Abrechnung
-
-Agent organizes:
-[runs: organize --id 20260215_143022_00 --sender UBS --date 2026-02-10 --type Kontoauszug]
-[runs: organize --id 20260215_143022_01 --sender Cornercard --date 2026-01-31 --type Abrechnung]
-
-Agent: Done! Saved 2 documents:
-- 2026/UBS/2026-02-10_UBS_Kontoauszug.pdf
-- 2026/Cornercard/2026-01-31_Cornercard_Abrechnung.pdf
-```
+| `error` | Something failed | See [[troubleshooting]] |
 
 ## Configuration
 
 Preferences stored in `memory/preferences.json`:
 - `default_scanner` - Scanner to use
-- `default_output` - Where to save files
+- `default_output` - Where to save files (see [[file-organization]])
 - `local_fallback` - Backup location if default unavailable
 
 ## Troubleshooting
+
+See [[troubleshooting]] for common issues. Quick checks:
 
 **Scanner not found:**
 ```bash
@@ -131,7 +136,3 @@ scanline -list
 **Poor OCR quality:**
 - Increase resolution (try 400 or 600 DPI)
 - Ensure documents are clean and flat
-
-**Output not accessible:**
-- Script automatically falls back to local directory
-- Check mount status of network drives

@@ -1,3 +1,7 @@
+---
+description: Available tools - scanline CLI, output storage paths, and the document scanner script with its commands and options.
+---
+
 # TOOLS.md - Scanner Agent
 
 ## Scanner CLI
@@ -10,7 +14,7 @@
 
 - **Default:** Configured via preferences (first-run setup)
 - **Fallback:** `~/Documents/Scanned` if default not accessible
-- **Structure:** `YYYY/Category/YYYY-MM-DD_Description.pdf`
+- **Structure:** `YYYY/Category/YYYY-MM-DD_Description.pdf` — see [[file-organization]]
 
 ## Document Scanner Script
 
